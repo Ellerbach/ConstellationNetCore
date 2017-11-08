@@ -62,8 +62,10 @@ namespace Constellation.Package
                 //using the http://localhost:8088/rest/constellation/CheckAccess?SentinelName=MyVirtualSentinel&PackageName=MyVirtualPackage&AccessKey=MyAccessKey
                 try
                 {
-                    RunRequest("CheckAccess");
-                    return true;
+                    var ret = RunRequest("CheckAccess");
+                    if ((ret != null) && (bIsAllInitialzed))
+                        return true;
+                    else return false;
                 }
                 catch (Exception ex)
                 {
@@ -180,6 +182,8 @@ namespace Constellation.Package
             try
             {
                 var ret = RunRequest("GetSettings");
+                if (ret == null)
+                    return;
                 packgeSettings = JsonConvert.DeserializeObject<Dictionary<string, string>>(ret);
                 SettingsUpdated?.Invoke(null, null);
             }
@@ -413,6 +417,8 @@ namespace Constellation.Package
             {
                 string param = $"sentinel={sentinel}&package={package}&name={name}&type={type}";
                 var ret = RunRequest("RequestStateObjects", param);
+                if (ret == null)
+                    return;
                 List<StateObject> stateObject = JsonConvert.DeserializeObject<List<StateObject>>(ret);
                 CheckStateObjectsAndNotify(stateObject);
             }
@@ -574,7 +580,9 @@ namespace Constellation.Package
                 string param = $"sentinel={sentinel}&package={package}&name={name}&type={type}";
                 if (subscriptionId != "")
                     param += $"&subscriptionId={subscriptionId}";
-                var ret = RunRequest("SubscribeToStateObjects", param);                
+                var ret = RunRequest("SubscribeToStateObjects", param);
+                if (ret == null)
+                    return;
                 if ((ret != "") && (ret.Length > 2))
                 {
                     if (subscriptionId == "")
@@ -594,16 +602,18 @@ namespace Constellation.Package
             }
         }
 
-        static private void CheckRegisteredStates()
+        static private bool CheckRegisteredStates()
         {
             if (subscriptionId == "")
-                return;
+                return false;
 
             // http://localhost:8088/rest/constellation/GetStateObjects?SentinelName=Consumer&PackageName=Demo&AccessKey=MaCleDeTest123&subscriptionId=<subId>
             try
             {
                 string param = $"subscriptionId={subscriptionId}";
                 var ret = RunRequest("GetStateObjects", param);
+                if (ret == null)
+                    return false;
                 var jstate = JsonConvert.DeserializeObject<List<StateObjectFromGet>>(ret);
                 List<StateObject> stateObject = new List<StateObject>();
                 foreach (var js in jstate)
@@ -615,8 +625,9 @@ namespace Constellation.Package
             catch (Exception ex)
             {
                 Debug.WriteLine($"UPS: {ex.Message}");
+                return false;
             }
-
+            return true;
         }
 
         //
@@ -882,6 +893,8 @@ namespace Constellation.Package
                 if (messageSubscriptionId == "")
                 {
                     var ret = RunRequest("SubscribeToMessage");
+                    if (ret == null)
+                        return;
                     if ((ret != "") && (ret.Length > 2))
                     {
                         if (messageSubscriptionId == "")
@@ -1160,6 +1173,8 @@ namespace Constellation.Package
 
                 string param = $"subscriptionId={messageSubscriptionId}";
                 var ret = RunRequest("GetMessages", param);
+                if (ret == null)
+                    return;
                 if (ret.Length >= 2)
                 {
                     //The "Data" returned is sometimes an array, sometimes 
@@ -1263,8 +1278,14 @@ namespace Constellation.Package
                     timerCheckState.Dispose();
                 if ((!bIsCheckingState) && (bIsAllInitialzed))
                 {
-                    CheckRegisteredStates();
-                    GetStates(null);
+                    var ret = CheckRegisteredStates();
+                    if (ret)
+                        GetStates(null);
+                    else {
+                        // we most likely had an issue, so wait 3 seconds and retry
+                        timerCheckState = new Timer(GetStates);
+                        timerCheckState.Change(RetryConnectionInterval, Timeout.Infinite);
+                    }
                 }
                 else {
                     timerCheckState = new Timer(GetStates);
@@ -1321,7 +1342,7 @@ namespace Constellation.Package
             {
                 Debug.WriteLine($"UPS command{commande}: {ex.Message}");
             }
-            return "";
+            return null;
         }
 
         private static string BuildURL()
