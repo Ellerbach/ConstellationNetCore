@@ -115,6 +115,9 @@ All features you're used to have with the full .NET SDK are supported including 
 var str = PackageHost.GetSettingValue("Number"); 
 ```
 
+### IPackage function
+So far the ```OnStart```, ```OnPreShutdown``` and ```OnShutdown``` functions are not supported. They will be implemend soon.
+
 ## Compiling and deploying your package
 Just like any other .NET Core application, I recommend to use a command line or a PowerShell to build the application especially if it's for a specific platform.
 Go to the main directory and simply do a ```dotnet restore``` then ```dotnet publish -r linux-arm``` to build your .NET Core application for a Linuw ARM platform.
