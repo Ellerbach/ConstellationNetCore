@@ -803,7 +803,19 @@ namespace Constellation.Package
         //     Shutdowns the current package
         public static void Shutdown()
         {
-            //TODO, let see what to be done :D
+           if(IsRunning)
+            {
+                bIsAllInitialzed = false;
+                SettingsUpdated = null;
+                StateObjectUpdated = null;
+                LastStateObjectsReceived = null;                
+                PackageDescriptor = null;
+                if (Package != null)
+                {
+                    Package.OnShutdown();
+                    Package = null;
+                }
+            }
         }
         //
         // Summary:
@@ -845,6 +857,19 @@ namespace Constellation.Package
             //Register the package
             DeclarePackageDescriptor();
             bIsAllInitialzed = true;
+
+            Package.OnStart();
+            if ((Environment.OSVersion.Platform == PlatformID.Unix) || (Environment.OSVersion.Platform == PlatformID.MacOSX))
+            {
+                Console.WriteLine("Package started");
+                Thread.Sleep(-1);
+            }
+            else
+            {
+                Console.WriteLine("Press enter to exit");
+                Console.Read();
+            }
+            Shutdown();
         }
 
         //

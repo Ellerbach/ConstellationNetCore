@@ -41,8 +41,15 @@ class MyconstellationClass : PackageBase
         //PackageHost.ServerName = "www.monserver.net";
         PackageHost.ServerName = "192.168.1.2";
 
-        PackageHost.Start<MyconstellationClass>();
-        //Do tons of things
+        PackageHost.Start<MyconstellationClass>();        
+    }
+
+    public override void OnStart()
+    {
+        Console.WriteLine($"Package status {PackageHost.IsConnected}");
+        if(PackeHost.IsConnected)
+            PackageHost.WriteInfo("All good, it's working, we're connected");
+        //Do tons of things here
     }
 }
 ``` 
@@ -116,7 +123,7 @@ var str = PackageHost.GetSettingValue("Number");
 ```
 
 ### IPackage function
-So far the ```OnStart```, ```OnPreShutdown``` and ```OnShutdown``` functions are not supported. They will be implemend soon.
+The ```OnStart```, ```OnPreShutdown``` and ```OnShutdown``` functions are supported. Once you launch the ```PackageHost.Start``` the OnStart function will be called. Then after the package will stop the OnShutdown will be called and finally the code after the ```PackageHost.Start``` will continue to execute. The OnPreShutdown function is never called as the package is a virtual package.
 
 ## Compiling and deploying your package
 Just like any other .NET Core application, I recommend to use a command line or a PowerShell to build the application especially if it's for a specific platform.
