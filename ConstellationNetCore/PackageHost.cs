@@ -23,6 +23,12 @@ namespace Constellation.Package
         // Summary:
         //     Retry connection interval (3 seconds)
         public const int RetryConnectionInterval = 3000;
+        /// <summary>
+        /// Maximum retry before reseting subscription ID for messages and states objects. It may mean we lost the connection and need a new key
+        /// </summary>
+        private const int RetryMaxError = 60;
+        static private int RetryStateObjects = 0;
+        static private int RetryMessages = 0;
 
         #region package definition        
         //
@@ -803,12 +809,12 @@ namespace Constellation.Package
         //     Shutdowns the current package
         public static void Shutdown()
         {
-           if(IsRunning)
+            if (IsRunning)
             {
                 bIsAllInitialzed = false;
                 SettingsUpdated = null;
                 StateObjectUpdated = null;
-                LastStateObjectsReceived = null;                
+                LastStateObjectsReceived = null;
                 PackageDescriptor = null;
                 if (Package != null)
                 {
@@ -859,16 +865,16 @@ namespace Constellation.Package
             bIsAllInitialzed = true;
 
             Package.OnStart();
-            if ((Environment.OSVersion.Platform == PlatformID.Unix) || (Environment.OSVersion.Platform == PlatformID.MacOSX))
-            {
-                Console.WriteLine("Package started");
-                Thread.Sleep(-1);
-            }
-            else
-            {
-                Console.WriteLine("Press enter to exit");
-                Console.Read();
-            }
+            //if ((Environment.OSVersion.Platform == PlatformID.Unix) || (Environment.OSVersion.Platform == PlatformID.MacOSX))
+            //{
+            Console.WriteLine("Package started");
+            Thread.Sleep(-1);
+            //}
+            //else
+            //{
+            //    Console.WriteLine("Press enter to exit");
+            //    Console.Read();
+            //}
             Shutdown();
         }
 
@@ -1185,7 +1191,27 @@ namespace Constellation.Package
         static private Timer timerMessage;
         static private Timer timerCheckState;
         static private bool bIsCheckingState = false;
-        //static private bool bIsCheckingMessage = false;
+
+        private static void CheckRetryMessages()
+        {
+            RetryMessages++;
+            // we most likely had an issue, so wait 3 seconds and retry
+            if (RetryMessages < RetryMaxError)
+            {
+                timerMessage = new Timer(GetMessages);
+                timerMessage.Change(RetryConnectionInterval, Timeout.Infinite);
+            }
+            else
+            {
+                messageSubscriptionId = "";
+                //looks like we may have lost connection with the sentinel for 3 minutes = 3s x 60 times
+                foreach (var prop in MessageToRaise)
+                {
+                    RegisterMessageCallback(prop.Key.Key, null);
+                }
+            }
+        }
+
 
         // Used to Get the messages
         private static void GetMessages(object state)
@@ -1199,7 +1225,7 @@ namespace Constellation.Package
                 string param = $"subscriptionId={messageSubscriptionId}";
                 var ret = RunRequest("GetMessages", param);
                 if (ret == null)
-                    return;
+                    CheckRetryMessages();
                 if (ret.Length >= 2)
                 {
                     //The "Data" returned is sometimes an array, sometimes 
@@ -1241,6 +1267,7 @@ namespace Constellation.Package
                         }
                     }
                 }
+                RetryMessages = 0;
                 //call back the GetMessage()
                 GetMessages(null);
 
@@ -1250,8 +1277,7 @@ namespace Constellation.Package
             {
                 Debug.WriteLine($"UPS: {ex.Message}");
                 //Wait 3 seconds and retry
-                timerMessage = new Timer(GetMessages);
-                timerMessage.Change(RetryConnectionInterval, Timeout.Infinite);
+                CheckRetryMessages();
             }
         }
 
@@ -1295,6 +1321,29 @@ namespace Constellation.Package
             }
         }
 
+        private static void CheckRetryStates()
+        {
+            RetryStateObjects++;
+            // we most likely had an issue, so wait 3 seconds and retry
+            if (RetryStateObjects < RetryMaxError)
+            {
+                timerCheckState = new Timer(GetStates);
+                timerCheckState.Change(RetryConnectionInterval, Timeout.Infinite);
+            }
+            else
+            {
+                //looks like we may have lost connection with the sentinel for 3 minutes = 3s x 60 times
+                foreach (var prop in PropertyToRaise)
+                {
+                    //Let's reinitialize the request process
+                    subscriptionId = "";
+                    //CheckStateObjectsAndNotify
+                    RegisterStateObjectCallback(CheckStateObjectsAndNotify, prop.StateObjectsToCheck.Sentinel, prop.StateObjectsToCheck.Package, prop.StateObjectsToCheck.Name, prop.StateObjectsToCheck.Type, prop.StateObjectsToCheck.RequestValueOnInit);
+                }
+            }
+
+        }
+
         private static void GetStates(object state)
         {
             try
@@ -1305,25 +1354,25 @@ namespace Constellation.Package
                 {
                     var ret = CheckRegisteredStates();
                     if (ret)
+                    {
                         GetStates(null);
-                    else {
-                        // we most likely had an issue, so wait 3 seconds and retry
-                        timerCheckState = new Timer(GetStates);
-                        timerCheckState.Change(RetryConnectionInterval, Timeout.Infinite);
+                        RetryStateObjects = 0;
+                    }
+                    else
+                    {
+                        CheckRetryStates();
                     }
                 }
-                else {
-                    timerCheckState = new Timer(GetStates);
-                    timerCheckState.Change(RetryConnectionInterval, Timeout.Infinite);
+                else
+                {
+                    CheckRetryStates();
                 }
             }
             catch (Exception ex)
             {
                 bIsCheckingState = false;
                 Debug.WriteLine($"UPS: {ex.Message}");
-                //Wait 3 seconds and retry
-                timerCheckState = new Timer(GetStates);
-                timerCheckState.Change(RetryConnectionInterval, Timeout.Infinite);
+                CheckRetryStates();
             }
         }
 
